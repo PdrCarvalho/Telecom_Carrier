@@ -7,7 +7,8 @@ import decimal
 
 from src.models import PhoneNumber, User
 from app import db, app
-
+from . import constants
+from .permissions import manager_required
 
 # @jwt.user_claims_loader
 # def add_claims_to_access_token(identity):
@@ -16,7 +17,8 @@ from app import db, app
 #         'foo': ['bar', 'baz']
 #     }
 
-@fresh_jwt_required
+
+@manager_required
 def add_phone_number():
     value = request.json.get('value', None)
     monthyPrice = decimal.Decimal(request.json.get('monthyPrice', None))
@@ -99,7 +101,7 @@ def get_by_id(id_):
         return response
 
 
-@fresh_jwt_required
+@manager_required
 def delete_phone_number(id_):
     try:
         number = PhoneNumber.query.filter_by(id=id_, active=True).first()
@@ -127,7 +129,7 @@ def delete_phone_number(id_):
         return response
 
 
-@fresh_jwt_required
+@manager_required
 def update_phone_number(id_):
     update_labels = ['value', 'monthyPrice', 'setupPrice', 'currency']
     update = {}
@@ -166,7 +168,10 @@ def update_phone_number(id_):
 def register_user():
     username = request.json.get('username', None)
     password = request.json.get('password', None)
-    if not username or not password:
+    role = request.json.get('role', None)
+    if not role:
+        role = constants.ROLES_TYPE[constants.USER]
+    if not username or not password or role not in constants.ROLES_TYPE.values():
         response = app.response_class(
             response=json.dumps({'error': 'validation error'}),
             status=500,
@@ -174,15 +179,14 @@ def register_user():
         )
         return response
     if bool(User.query.filter_by(username=username).first()):
-        if not username or not password:
-            response = app.response_class(
-                response=json.dumps({'error': 'User already exists'}),
-                status=500,
-                mimetype='application/json'
-            )
-            return response
+        response = app.response_class(
+            response=json.dumps({'error': 'User already exists'}),
+            status=500,
+            mimetype='application/json'
+        )
+        return response
     try:
-        user = User(username=username, password=hashlib.sha256(password.encode("utf-8")).hexdigest())
+        user = User(username=username, password=hashlib.sha256(password.encode("utf-8")).hexdigest(), role=role)
         user.save_to_db()
         data = json.dumps(user.serialize())
         response = app.response_class(
@@ -193,7 +197,7 @@ def register_user():
         return response
     except Exception as e:
         response = app.response_class(
-            response=json.dumps({'error': e}),
+            response=json.dumps({'error': e.__str__()}),
             status=500,
             mimetype='application/json'
         )
@@ -217,7 +221,7 @@ def login_user():
         data = json.dumps({
             'access_token': access_token,
             'refresh_token': refresh_token,
-            'user': json.dumps(user.serialize())
+            'user': user.serialize()
         })
         response = app.response_class(
             response=data,
