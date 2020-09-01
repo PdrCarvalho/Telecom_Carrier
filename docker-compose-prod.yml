@@ -11,13 +11,19 @@ services:
     build: ./
     volumes:
       - ./:/usr/src/app/
-    ports:
-      - 5000:5000
-    expose:
-      - 5000
     env_file:
       - ./.env
     depends_on:
       - db
     command: bash -c 'while !</dev/tcp/db/5432; do sleep 1; done;
       python /usr/src/app/manage.py db migrate;python manage.py db upgrade;python manage.py runserver --host 0.0.0.0'
+  nginx:
+    image: nginx:1.19.2-alpine
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config/nginx:/etc/nginx/conf.d
+    depends_on:
+      - web
+    links:
+      - "web"

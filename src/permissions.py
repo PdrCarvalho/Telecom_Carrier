@@ -73,7 +73,7 @@ def manager_required(fn):
         if claims['role'] != 'manager':
             return app.response_class(
                 response=json.dumps({
-                    "description": "Access token not found!"+claims['role'],
+                    "description": "Unauthorized access to "+claims['role'],
                     "error": "unauthorized_loader"
                 }),
                 status=401,

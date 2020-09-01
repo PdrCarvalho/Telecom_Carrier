@@ -1,38 +1,46 @@
 import hashlib
 
 from flask import request, json
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_refresh_token_required, get_jwt_identity, \
-    fresh_jwt_required
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_refresh_token_required, \
+    get_jwt_identity, fresh_jwt_required, jwt_required
 import decimal
 
-from src.models import PhoneNumber, User
+from src.models import DID, User
 from app import db, app
 from . import constants
 from .permissions import manager_required
 
-# @jwt.user_claims_loader
-# def add_claims_to_access_token(identity):
-#     return {
-#         'hello': identity,
-#         'foo': ['bar', 'baz']
-#     }
-
 
 @manager_required
-def add_phone_number():
+def add_did():
+    print(request.json.get('monthyPrice', 0.00))
     value = request.json.get('value', None)
-    monthyPrice = decimal.Decimal(request.json.get('monthyPrice', None))
-    setupPrice = decimal.Decimal(request.json.get('setupPrice', None))
-    currency = request.json.get('currency', None)
-    if not bool(value and monthyPrice and setupPrice and currency):
+    monthyPrice = request.json.get('monthyPrice', 0.00)
+    setupPrice = request.json.get('setupPrice', 0.00)
+    currency = request.json.get('currency', "R$")
+    if not value:
         response = app.response_class(
-            response=json.dumps({'error': 'validation error'}),
+            response=json.dumps({'error': 'Submit a valid DID'}),
+            status=500,
+            mimetype='application/json'
+        )
+        return response
+    if not isinstance(monthyPrice, float) and not isinstance(setupPrice, float):
+        response = app.response_class(
+            response=json.dumps({'error': 'Monetary values must be greater than or equal to 0.00.'}),
+            status=500,
+            mimetype='application/json'
+        )
+        return response
+    if monthyPrice < 0 or setupPrice < 0:
+        response = app.response_class(
+            response=json.dumps({'error': 'Monetary values must be greater than or equal to 0.00.'}),
             status=500,
             mimetype='application/json'
         )
         return response
     try:
-        number = PhoneNumber(
+        number = DID(
             value=value,
             monthyPrice=monthyPrice,
             setupPrice=setupPrice,
@@ -48,16 +56,26 @@ def add_phone_number():
         return response
     except Exception as e:
         response = app.response_class(
-            response=json.dumps({'error': e}),
+            response=json.dumps({'error': e.__str__()}),
             status=500,
             mimetype='application/json'
         )
         return response
 
 
+@jwt_required
 def get_all():
+    print(dict(request.headers))
     try:
-        numbers = PhoneNumber.query.filter_by(active=True)
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 10))
+        if not page > 0 or not page_size > 0:
+            return app.response_class(
+                response=json.dumps({'error': 'Using only positive integer value in pagination'}),
+                status=400,
+                mimetype='application/json'
+            )
+        numbers = DID.query.filter_by(active=True).order_by('id').offset((page - 1) * page_size).limit(page_size)
         data = json.dumps([e.serialize() for e in numbers])
         response = app.response_class(
             response=data,
@@ -67,7 +85,7 @@ def get_all():
         return response
     except Exception as e:
         response = app.response_class(
-            response=json.dumps({'error': e}),
+            response=json.dumps({'error': e.__str__()}),
             status=500,
             mimetype='application/json'
         )
@@ -77,7 +95,7 @@ def get_all():
 @fresh_jwt_required
 def get_by_id(id_):
     try:
-        number = PhoneNumber.query.filter_by(id=id_, active=True).first()
+        number = DID.query.filter_by(id=id_, active=True).first()
         if number:
             data = json.dumps(number.serialize())
             response = app.response_class(
@@ -87,14 +105,14 @@ def get_by_id(id_):
             )
             return response
         response = app.response_class(
-            response=json.dumps({'error': 'Number not exist'}),
+            response=json.dumps({'error': 'DID not exist'}),
             status=404,
             mimetype='application/json'
         )
         return response
     except Exception as e:
         response = app.response_class(
-            response=json.dumps({'error': e}),
+            response=json.dumps({'error': e.__str__()}),
             status=500,
             mimetype='application/json'
         )
@@ -102,9 +120,9 @@ def get_by_id(id_):
 
 
 @manager_required
-def delete_phone_number(id_):
+def delete_did(id_):
     try:
-        number = PhoneNumber.query.filter_by(id=id_, active=True).first()
+        number = DID.query.filter_by(id=id_, active=True).first()
         if number:
             number.active = False
             db.session.commit()
@@ -115,14 +133,14 @@ def delete_phone_number(id_):
             )
             return response
         response = app.response_class(
-            response=json.dumps({'error': 'Number not exist'}),
+            response=json.dumps({'error': 'DID not exist'}),
             status=404,
             mimetype='application/json'
         )
         return response
     except Exception as e:
         response = app.response_class(
-            response=json.dumps({'error': e}),
+            response=json.dumps({'error': e.__str__()}),
             status=500,
             mimetype='application/json'
         )
@@ -130,15 +148,23 @@ def delete_phone_number(id_):
 
 
 @manager_required
-def update_phone_number(id_):
+def update_did(id_):
     update_labels = ['value', 'monthyPrice', 'setupPrice', 'currency']
     update = {}
     for label in update_labels:
         item = request.json.get(label, None)
         if item:
+            if label in ['monthyPrice', 'setupPrice']:
+                if not isinstance(item, float):
+                    response = app.response_class(
+                        response=json.dumps({'error': 'Monetary values must be greater than or equal to 0.00.'}),
+                        status=500,
+                        mimetype='application/json'
+                    )
+                    return response
             update[label] = item
     try:
-        number = PhoneNumber.query.filter_by(id=id_, active=True).first()
+        number = DID.query.filter_by(id=id_, active=True).first()
         if number:
             for label, item in update.items():
                 setattr(number, label, item)
@@ -158,7 +184,7 @@ def update_phone_number(id_):
         return response
     except Exception as e:
         response = app.response_class(
-            response=json.dumps({'error': e}),
+            response=json.dumps({'error': e.__str__()}),
             status=500,
             mimetype='application/json'
         )

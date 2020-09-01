@@ -2,6 +2,7 @@ from app import db
 
 import sqlalchemy.types as types
 from . import constants
+import decimal
 
 
 class ChoiceType(types.TypeDecorator):
@@ -29,8 +30,8 @@ class BaseModel:
         db.session.commit()
 
 
-class PhoneNumber(db.Model, BaseModel):
-    __tablename__ = 'phone numbers'
+class DID(db.Model, BaseModel):
+    __tablename__ = 'DID'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     value = db.Column(db.String(), nullable=False)
@@ -42,8 +43,8 @@ class PhoneNumber(db.Model, BaseModel):
 
     def __init__(self, value, monthyPrice, setupPrice, currency):
         self.value = value
-        self.monthyPrice = monthyPrice
-        self.setupPrice = setupPrice
+        self.monthyPrice = decimal.Decimal(monthyPrice).quantize(decimal.Decimal('.01'), rounding=decimal.ROUND_HALF_UP)
+        self.setupPrice = decimal.Decimal(setupPrice).quantize(decimal.Decimal('.01'), rounding=decimal.ROUND_HALF_UP)
         self.currency = currency
 
     def __repr__(self):
